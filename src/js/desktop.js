@@ -1,16 +1,19 @@
 /**
  * 半角数字入力プラグイン デスクトップ版イベントハンドラ (desktop.js)
  * core.js に依存する。manifest.json の desktop.js では必ず core.js の後に読み込むこと。
+ *
+ * フィールド要素の解決は core.js の resolveFieldElement が担う。
+ * kintone.app.record.getFieldElement() は非推奨APIで現行画面では null を返すため、
+ * 第1候補として渡しつつ、実際の解決はフォールバック（.field-<fieldId>）に委ねている。
  */
 (function (PLUGIN_ID) {
   'use strict';
 
-  var DEBOUNCE_MS = 100;
-  var debounceTimer = null;
+  var LOG_PREFIX = '[半角数字入力プラグイン]';
 
   function bindAll() {
     var config = HankakuNumPlugin.parseConfig(PLUGIN_ID);
-    HankakuNumPlugin.applyToFields(
+    return HankakuNumPlugin.applyToFields(
       config.fields,
       function (code) {
         return kintone.app.record.getFieldElement(code);
@@ -19,42 +22,15 @@
     );
   }
 
-  function scheduleRebind() {
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-    debounceTimer = setTimeout(function () {
-      debounceTimer = null;
-      bindAll();
-    }, DEBOUNCE_MS);
-  }
-
   kintone.events.on(['app.record.create.show', 'app.record.edit.show'], function (event) {
-    bindAll();
+    var summary = bindAll();
+    console.info(
+      LOG_PREFIX + ' デスクトップ版: ' + summary.bound + '/' + summary.total +
+        ' 件のフィールドにバインドしました（解決方法: ' + JSON.stringify(summary.strategies) + '）'
+    );
 
-    // kintoneがフィールドDOMを再描画した場合に備え、レコードフォーム領域を
-    // MutationObserver で監視し、変化があれば debounce しつつ再バインドする。
-    // 監視範囲を絞り、無限ループを防ぐため属性変化や自ページ内の再バインドは対象外とする。
-    try {
-      var formArea =
-        document.querySelector('.record-gaia') ||
-        document.querySelector('#record-edit') ||
-        document.body;
-
-      if (formArea && typeof MutationObserver !== 'undefined') {
-        var observer = new MutationObserver(function (mutations) {
-          var relevant = mutations.some(function (m) {
-            return m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0);
-          });
-          if (relevant) {
-            scheduleRebind();
-          }
-        });
-        observer.observe(formArea, { childList: true, subtree: true });
-      }
-    } catch (e) {
-      console.warn('[半角数字入力プラグイン] MutationObserverの設定に失敗しました', e);
-    }
+    // kintoneがフィールドDOMを再描画した場合に備えて再バインドする。
+    HankakuNumPlugin.observeAndRebind(bindAll);
 
     return event;
   });

@@ -14,6 +14,8 @@
 (function (global) {
   'use strict';
 
+  var LOG_PREFIX = '[半角数字入力プラグイン]';
+
   /**
    * 許可文字セットごとの「許可されない文字」にマッチする正規表現。
    * sanitizeValue はこの正規表現にマッチした文字を除去する。
@@ -178,35 +180,170 @@
   }
 
   /**
+   * kintone内部のフィールド定義（fieldId -> {var: フィールドコード}）から
+   * 「フィールドコード -> フィールドID」のマップを生成する。
+   * 副作用のない純粋関数として切り出し、単体テスト可能にしている。
+   * @param {Object} fieldList cybozu.data.page.FORM_DATA.schema.table.fieldList 相当のオブジェクト
+   * @returns {Object<string, string>} フィールドコードをキー、フィールドIDを値とするマップ
+   */
+  function buildFieldIdMapFrom(fieldList) {
+    var map = {};
+    if (!fieldList || typeof fieldList !== 'object') {
+      return map;
+    }
+    Object.keys(fieldList).forEach(function (id) {
+      var def = fieldList[id];
+      if (def && def.var) {
+        map[def.var] = id;
+      }
+    });
+    return map;
+  }
+
+  var cachedFieldIdMap = null;
+
+  /**
+   * 現在のページからフィールドコード -> フィールドIDのマップを取得する（ページ内キャッシュ付き）。
+   * cybozu.data.page はkintoneの内部オブジェクトで公式APIではないため、
+   * 参照できない場合も例外を投げず空マップを返す。
+   * @returns {Object<string, string>}
+   */
+  function getFieldIdMap() {
+    if (cachedFieldIdMap) {
+      return cachedFieldIdMap;
+    }
+    var fieldList = null;
+    try {
+      fieldList = global.cybozu.data.page.FORM_DATA.schema.table.fieldList;
+    } catch (e) {
+      fieldList = null;
+    }
+    cachedFieldIdMap = buildFieldIdMapFrom(fieldList);
+    return cachedFieldIdMap;
+  }
+
+  /**
+   * フィールドコードから、そのフィールドのDOM要素を解決する。
+   *
+   * 【重要】kintone.app.record.getFieldElement() および
+   * kintone.mobile.app.record.getFieldElement() は非推奨APIであり、
+   * 現行のレコード追加・編集画面では **全フィールドで null を返す** ことを実機で確認済み。
+   * そのため公式APIを第1候補として試したうえで、フィールドID由来のクラス
+   * （.field-<fieldId>）による解決をフォールバックとして用いる。
+   * このクラス構造はデスクトップ版・モバイル版で共通であることも実機確認済み。
+   *
+   * @param {string} code フィールドコード
+   * @param {(code: string) => (HTMLElement|null)} [getFieldElementFn] 公式APIのラッパー
+   * @returns {{element: HTMLElement|null, strategy: string}}
+   */
+  function resolveFieldElement(code, getFieldElementFn) {
+    if (typeof getFieldElementFn === 'function') {
+      try {
+        var official = getFieldElementFn(code);
+        if (official) {
+          return { element: official, strategy: 'getFieldElement' };
+        }
+      } catch (e) {
+        // 公式APIが例外を投げる環境でもフォールバックへ進む
+      }
+    }
+
+    var fieldId = getFieldIdMap()[code];
+    if (fieldId && global.document) {
+      var el = global.document.querySelector('.field-' + fieldId);
+      if (el) {
+        return { element: el, strategy: 'field-id' };
+      }
+    }
+
+    return { element: null, strategy: 'none' };
+  }
+
+  /**
    * フィールド設定の配列に基づき、各フィールドの input 要素にサニタイズをバインドする。
    * @param {Array<{code: string, allowType: string}>} fieldsConfig
-   * @param {(code: string) => HTMLElement} getFieldElementFn
+   * @param {(code: string) => (HTMLElement|null)} [getFieldElementFn]
    * @param {boolean} highlightEnabled
+   * @returns {{bound: number, total: number, strategies: Object<string, number>}} バインド結果のサマリー
    */
   function applyToFields(fieldsConfig, getFieldElementFn, highlightEnabled) {
-    if (!Array.isArray(fieldsConfig) || typeof getFieldElementFn !== 'function') {
-      return;
+    var summary = { bound: 0, total: 0, strategies: {} };
+    if (!Array.isArray(fieldsConfig)) {
+      return summary;
     }
+    summary.total = fieldsConfig.length;
+
     fieldsConfig.forEach(function (fieldConfig) {
       if (!fieldConfig || !fieldConfig.code) {
         return;
       }
       try {
-        var fieldEl = getFieldElementFn(fieldConfig.code);
-        if (!fieldEl) {
-          console.warn('[半角数字入力プラグイン] フィールド要素を取得できません: ' + fieldConfig.code);
+        var resolved = resolveFieldElement(fieldConfig.code, getFieldElementFn);
+        if (!resolved.element) {
+          console.warn(LOG_PREFIX + ' フィールド要素を取得できません: ' + fieldConfig.code);
           return;
         }
-        var inputEl = fieldEl.querySelector('input');
+        var inputEl = resolved.element.querySelector('input');
         if (!inputEl) {
-          console.warn('[半角数字入力プラグイン] input要素が見つかりません: ' + fieldConfig.code);
+          console.warn(LOG_PREFIX + ' input要素が見つかりません: ' + fieldConfig.code);
           return;
         }
         bindSanitizer(inputEl, fieldConfig.allowType || 'digit', { highlight: !!highlightEnabled });
+        summary.bound++;
+        summary.strategies[resolved.strategy] = (summary.strategies[resolved.strategy] || 0) + 1;
       } catch (e) {
-        console.warn('[半角数字入力プラグイン] フィールド処理中にエラーが発生しました: ' + fieldConfig.code, e);
+        console.warn(LOG_PREFIX + ' フィールド処理中にエラーが発生しました: ' + fieldConfig.code, e);
       }
     });
+
+    return summary;
+  }
+
+  /**
+   * レコードフォーム領域を監視し、DOM再描画時に再バインドを行う。
+   * bindSanitizer 側の dataset ガードによりバインドは冪等なため、多重実行しても安全。
+   *
+   * 監視対象は .layout-gaia（デスクトップ版・モバイル版の双方に存在することを実機確認済み）。
+   * 旧実装が使っていた .record-gaia / #record-edit は現行kintoneには存在しない。
+   *
+   * @param {Function} rebindFn 再バインド処理
+   * @param {number} [debounceMs] デバウンス時間（既定100ms）
+   * @returns {MutationObserver|null}
+   */
+  function observeAndRebind(rebindFn, debounceMs) {
+    if (typeof MutationObserver === 'undefined' || typeof rebindFn !== 'function') {
+      return null;
+    }
+    var wait = typeof debounceMs === 'number' ? debounceMs : 100;
+    var timer = null;
+
+    var formArea = document.querySelector('.layout-gaia') || document.body;
+    if (!formArea) {
+      return null;
+    }
+
+    try {
+      var observer = new MutationObserver(function (mutations) {
+        var relevant = mutations.some(function (m) {
+          return m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0);
+        });
+        if (!relevant) {
+          return;
+        }
+        if (timer) {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(function () {
+          timer = null;
+          rebindFn();
+        }, wait);
+      });
+      observer.observe(formArea, { childList: true, subtree: true });
+      return observer;
+    } catch (e) {
+      console.warn(LOG_PREFIX + ' MutationObserverの設定に失敗しました', e);
+      return null;
+    }
   }
 
   /**
@@ -241,7 +378,10 @@
     sanitizeValue: sanitizeValue,
     getCaretOffsetAdjustment: getCaretOffsetAdjustment,
     bindSanitizer: bindSanitizer,
+    buildFieldIdMapFrom: buildFieldIdMapFrom,
+    resolveFieldElement: resolveFieldElement,
     applyToFields: applyToFields,
+    observeAndRebind: observeAndRebind,
     parseConfig: parseConfig
   };
 
