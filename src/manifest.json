@@ -1,0 +1,40 @@
+{
+  "manifest_version": 1,
+  "version": 1,
+  "type": "APP",
+  "name": {
+    "ja": "半角数字入力プラグイン",
+    "en": "Half-width Number Input Plugin"
+  },
+  "description": {
+    "ja": "文字列（1行）・数値・リンクフィールドに入力された全角数字などを、入力中にリアルタイムで半角数字（＋許可した記号）へ自動変換します。",
+    "en": "Automatically converts full-width digits typed into single-line text, number, and link fields into half-width digits (plus allowed symbols) in real time."
+  },
+  "icon": "image/icon.png",
+  "desktop": {
+    "js": [
+      "js/core.js",
+      "js/desktop.js"
+    ],
+    "css": [
+      "css/desktop.css"
+    ]
+  },
+  "mobile": {
+    "js": [
+      "js/core.js",
+      "js/mobile.js"
+    ]
+  },
+  "config": {
+    "html": "html/config.html",
+    "js": [
+      "js/core.js",
+      "js/config.js"
+    ],
+    "css": [
+      "css/config.css"
+    ],
+    "required_params": []
+  }
+}

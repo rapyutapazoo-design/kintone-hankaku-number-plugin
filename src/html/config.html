@@ -1,0 +1,30 @@
+<div class="hankaku-config">
+  <h1>半角数字入力プラグイン設定</h1>
+
+  <p class="hankaku-config-description">
+    半角数字への自動変換を行うフィールドを指定してください。
+    対象にできるフィールドタイプは「文字列（1行）」「数値」「リンク」です（サブテーブル内のフィールドは対象外です）。
+  </p>
+
+  <p class="hankaku-config-note">
+    ※ 「リンク」フィールドは電話番号・URL・メールアドレスなど数値以外の用途にも使われます。
+    数値専用の運用でない場合は設定対象に含めないことをおすすめします。
+  </p>
+
+  <div id="error-message" class="hankaku-config-error" style="display:none;"></div>
+
+  <div id="field-rows" class="hankaku-config-rows"></div>
+
+  <button type="button" id="add-field-row" class="hankaku-config-button-secondary">＋ フィールドを追加</button>
+
+  <div class="hankaku-config-option">
+    <label>
+      <input type="checkbox" id="highlight-toggle" />
+      対象フィールドにフォーカスした際、枠線で視覚的に強調表示する
+    </label>
+  </div>
+
+  <div class="hankaku-config-actions">
+    <button type="button" id="save-config" class="hankaku-config-button-primary">設定を保存</button>
+  </div>
+</div>

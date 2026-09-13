@@ -1,0 +1,14 @@
+{
+  "name": "hankaku-num-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "kintoneの文字列(1行)・数値・リンクフィールドで、入力値を自動的に半角数字（＋許可記号）へ変換するプラグイン",
+  "scripts": {
+    "build": "kintone-plugin-packer --ppk private.ppk --out dist/plugin.zip src",
+    "build:init": "kintone-plugin-packer --out dist/plugin.zip src",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@kintone/plugin-packer": "^9.1.2"
+  }
+}

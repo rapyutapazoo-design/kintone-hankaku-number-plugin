@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.ppk
+.DS_Store

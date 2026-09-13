@@ -1,0 +1,99 @@
+/* 半角数字入力プラグイン 設定画面スタイル */
+
+.hankaku-config {
+  max-width: 720px;
+  padding: 16px;
+  font-size: 13px;
+  color: #333;
+}
+
+.hankaku-config h1 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.hankaku-config-description,
+.hankaku-config-note {
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.hankaku-config-note {
+  color: #b8860b;
+  background: #fffbea;
+  border: 1px solid #f0e1a1;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.hankaku-config-error {
+  color: #cc0000;
+  background: #fff0f0;
+  border: 1px solid #f5c2c2;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.hankaku-config-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hankaku-config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hankaku-config-row select {
+  padding: 4px 6px;
+  font-size: 13px;
+}
+
+.hankaku-config-field-select {
+  flex: 2;
+  min-width: 220px;
+}
+
+.hankaku-config-allow-select {
+  flex: 2;
+  min-width: 220px;
+}
+
+.hankaku-config-button-remove {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.hankaku-config-button-secondary {
+  padding: 6px 14px;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+
+.hankaku-config-option {
+  margin-bottom: 20px;
+}
+
+.hankaku-config-actions {
+  border-top: 1px solid #e0e0e0;
+  padding-top: 16px;
+}
+
+.hankaku-config-button-primary {
+  padding: 8px 24px;
+  cursor: pointer;
+  background: #3498db;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.hankaku-config-button-primary:hover {
+  background: #2d84c0;
+}
