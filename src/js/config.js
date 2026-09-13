@@ -2,9 +2,20 @@
  * 半角数字入力プラグイン 設定画面ロジック (config.js)
  * core.js に依存する（sanitizeValue等は使わないが、fields保存フォーマットの
  * 慣習を統一するため同じ名前空間 HankakuNumPlugin を利用可能にしている）。
+ *
+ * 【重要】kintone のプラグイン設定画面について
+ * プラグイン設定画面は /k/admin/app/{appId}/plugin/config/{pluginId}/ という
+ * 独立した管理画面ページであり、レコード画面のようなイベント
+ * （app.record.* など）のライフサイクルを持たない。
+ * kintone には設定画面用のイベント（app.config.show 等）は存在しないため、
+ * config.js は読み込まれた時点で自ら初期化処理を開始する必要がある。
+ * 存在しないイベント名を kintone.events.on() に渡してもエラーにはならず、
+ * 「一生発火しないハンドラ」が登録されるだけで画面が無反応になるため注意。
  */
 (function (PLUGIN_ID) {
   'use strict';
+
+  var LOG_PREFIX = '[半角数字入力プラグイン]';
 
   var ALLOW_TYPE_LABELS = {
     digit: '数字のみ（0-9）',
@@ -49,9 +60,13 @@
    * @param {HTMLElement} container 行を追加する親要素（#field-rows）
    * @param {Array} candidates フィールド候補
    * @param {{code?: string, allowType?: string}} [savedRow] 復元する保存値
-   * @returns {HTMLElement} 生成した行要素
+   * @returns {HTMLElement|null} 生成した行要素（container が無い場合は null）
    */
   function renderFieldRow(container, candidates, savedRow) {
+    if (!container) {
+      console.error(LOG_PREFIX + ' 行の描画先（#field-rows）が見つかりません。');
+      return null;
+    }
     savedRow = savedRow || {};
 
     var row = document.createElement('div');
@@ -104,8 +119,7 @@
   }
 
   function addFieldRow() {
-    var container = document.getElementById('field-rows');
-    renderFieldRow(container, fieldCandidates);
+    renderFieldRow(document.getElementById('field-rows'), fieldCandidates);
   }
 
   function removeFieldRow(rowEl) {
@@ -165,6 +179,9 @@
   function showError(message) {
     var errorEl = document.getElementById('error-message');
     if (!errorEl) {
+      if (message) {
+        console.error(LOG_PREFIX + ' ' + message);
+      }
       return;
     }
     if (!message) {
@@ -198,17 +215,35 @@
 
   /**
    * 保存済み設定を読み込み、フィールド候補とマージして画面に復元する。
+   * @param {HTMLElement} container 行の描画先（#field-rows）
    */
-  function loadConfig() {
+  function loadConfig(container) {
     var appId = kintone.app.getId();
+    if (!appId) {
+      showError('アプリIDを取得できませんでした。アプリの設定画面から開き直してください。');
+      console.error(LOG_PREFIX + ' kintone.app.getId() がアプリIDを返しませんでした。');
+      return;
+    }
+
     var savedConfig = HankakuNumPlugin.parseConfig(PLUGIN_ID);
 
     fetchFieldCandidates(appId)
       .then(function (candidates) {
         fieldCandidates = candidates;
+        console.info(
+          LOG_PREFIX + ' フィールド候補を取得しました: ' + candidates.length + '件' +
+            '（対象タイプ: ' + TARGET_FIELD_TYPES.join(', ') + ' / サブテーブル内は除外）'
+        );
 
-        var container = document.getElementById('field-rows');
         container.innerHTML = '';
+
+        if (candidates.length === 0) {
+          showError(
+            '対象にできるフィールド（文字列1行・数値・リンク）がこのアプリに存在しません。' +
+              '先にアプリのフォームへ対象フィールドを追加してください。'
+          );
+          return;
+        }
 
         if (savedConfig.fields.length === 0) {
           renderFieldRow(container, fieldCandidates);
@@ -225,16 +260,58 @@
       })
       .catch(function (err) {
         showError('フィールド一覧の取得に失敗しました。画面を再読み込みしてください。');
-        console.error('[半角数字入力プラグイン] fetchFieldCandidates失敗', err);
+        console.error(LOG_PREFIX + ' fetchFieldCandidates失敗', err);
       });
   }
 
-  kintone.events.on('app.config.show', function (event) {
-    loadConfig();
+  /**
+   * 設定画面に必須のDOM要素をまとめて取得する。
+   * 1つでも欠けている場合は null を返し、呼び出し元で初期化を中断させる。
+   * サイレントに失敗して「画面が無反応」になることを防ぐため、
+   * 欠けている要素名を必ずコンソールに出力する。
+   * @returns {{rows: HTMLElement, addButton: HTMLElement, saveButton: HTMLElement}|null}
+   */
+  function getRequiredElements() {
+    var elements = {
+      rows: document.getElementById('field-rows'),
+      addButton: document.getElementById('add-field-row'),
+      saveButton: document.getElementById('save-config')
+    };
+    var missing = Object.keys(elements).filter(function (key) {
+      return !elements[key];
+    });
+    if (missing.length > 0) {
+      console.error(
+        LOG_PREFIX + ' 設定画面の必須要素が見つかりません: ' + missing.join(', ') +
+          ' / config.html が正しく読み込まれているか確認してください。'
+      );
+      return null;
+    }
+    return elements;
+  }
 
-    document.getElementById('add-field-row').addEventListener('click', addFieldRow);
-    document.getElementById('save-config').addEventListener('click', saveConfig);
+  /**
+   * 設定画面の初期化。
+   */
+  function init() {
+    console.info(LOG_PREFIX + ' 設定画面を初期化します。');
 
-    return event;
-  });
+    var elements = getRequiredElements();
+    if (!elements) {
+      return;
+    }
+
+    elements.addButton.addEventListener('click', addFieldRow);
+    elements.saveButton.addEventListener('click', saveConfig);
+
+    loadConfig(elements.rows);
+  }
+
+  // config.js の読み込みタイミングが config.html の DOM 構築前後の
+  // どちらであっても確実に初期化されるよう、readyState を見て実行方法を切り替える。
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })(kintone.$PLUGIN_ID);

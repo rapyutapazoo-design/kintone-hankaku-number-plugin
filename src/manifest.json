@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "version": 1,
+  "version": 2,
   "type": "APP",
   "name": {
     "ja": "半角数字入力プラグイン",
@@ -35,6 +35,8 @@
     "css": [
       "css/config.css"
     ],
-    "required_params": []
+    "required_params": [
+      "fields"
+    ]
   }
 }
